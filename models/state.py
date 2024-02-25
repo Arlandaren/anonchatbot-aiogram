@@ -4,4 +4,5 @@ from aiogram.fsm.state import StatesGroup, State
 class States(StatesGroup):
     setgender = State()
     setage = State()
+    chating = State()
 # STATES = States()
