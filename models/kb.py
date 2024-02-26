@@ -11,8 +11,8 @@ def main_menu():
     keyboard.button(text="поиск",callback_data="search_start")
     return keyboard.as_markup()
 def search_menu():
-    keyboard = ReplyKeyboardBuilder()
-    keyboard.button(text="Остановить поиск")
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text="Остановить поиск", callback_data="search_stop")
     keyboard.adjust(1)
     return keyboard.as_markup(resize_keyboard=True)
 def chating_menu():

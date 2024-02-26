@@ -7,7 +7,7 @@ from models.state import States
 from models.kb import *
 from models.redis import *
 import os
-
+from typing import Union
 
 bot = Bot(os.getenv("BOT_TOKEN"))
 
@@ -18,7 +18,7 @@ router = Router()
 @dp.message(CommandStart(), StateFilter(None))
 async def start(msg: Message, state:FSMContext):
     if await DB.check_user(msg.from_user.id):
-        await msg.answer(text=f"привет {msg.from_user.username}", reply_markup=main_menu())
+        await msg.answer(text=f"привет {msg.from_user.first_name}", reply_markup=main_menu())
     else:
         await msg.answer(text="Привет, ты новичек так что давай зарегистрируемся")
         await msg.answer(text="Укажи свой пол", reply_markup=gender_select())
@@ -50,28 +50,36 @@ async def setage(msg:Message,state:FSMContext):
     await msg.answer(f"Ваши данные успешно сохраненны.\nВозраст:{age}\nПол:{gender}")
     await state.clear()
 
+@dp.message(F.text == "/search", StateFilter(None))
 @dp.callback_query(F.data == "search_start", StateFilter(None))
-async def search_start(cb: types.CallbackQuery, state:FSMContext):
+async def search_start(query_or_message: Union[types.CallbackQuery, Message], state:FSMContext):
     await state.set_state(States.searching)
-    add_in_queue(cb.from_user.id)
-    await cb.message.answer("Идет поиск собеседника", reply_markup=search_menu())
+    msg = query_or_message
+    id = query_or_message.from_user.id
+    if isinstance(query_or_message, types.CallbackQuery):
+        msg = query_or_message.message
+    add_in_queue(id)
+    await msg.answer("Идет поиск собеседника", reply_markup=search_menu())
     if check_queue():
-        interlocutor = get_interlocutor(cb.from_user.id)
-        create_dialogue(cb.from_user.id,interlocutor)
-
-        await cb.message.answer("собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
-        await bot.send_message(chat_id=interlocutor, text="собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
+        interlocutor = get_interlocutor(id)
+        create_dialogue(id,interlocutor)
+        text = "собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой"
+        await msg.answer(text)
+        await bot.send_message(chat_id=interlocutor, text=text)
         await state.set_state(States.chating)
         await dp.fsm.get_context(bot, user_id=interlocutor, chat_id=interlocutor).set_state(States.chating)
         # await state.storage.set_state(key=StorageKey(cb.message.bot.id, chat_id=interlocutor, user_id=interlocutor), state=States.chating)
 
 
-@dp.message(F.text == "Остановить поиск",States.searching)
-async def search_stop(msg: Message, state:FSMContext):
-    await msg.answer(text="Поиск остановлен")
-    del_from_queue(msg.from_user.id)
+# @dp.message(F.text == "Остановить поиск",States.searching)
+@dp.callback_query(F.data == "search_stop",States.searching)
+async def search_stop(cb: types.CallbackQuery, state:FSMContext):
+    await cb.message.answer(text="Поиск остановлен")
+    del_from_queue(cb.from_user.id)
     await state.clear()
-
+@dp.message(States.searching)
+async def search_error(msg: Message):
+    await msg.answer("Вы уже находитесь в поиске собеседника", reply_markup=search_menu())
 @dp.message(States.chating, lambda m: m.text == "/stop")
 async def stop_chating(msg: Message):
     interlocutor = find_dialogue(msg.from_user.id)
@@ -80,7 +88,7 @@ async def stop_chating(msg: Message):
     del_dialogue(msg.from_user.id, interlocutor)
     await dp.fsm.get_context(bot, user_id=interlocutor, chat_id=interlocutor).clear()
     await dp.fsm.get_context(bot, user_id=msg.from_user.id, chat_id=msg.from_user.id).clear()
-
+    
 @dp.message(States.chating, F.text == "/next")
 async def next_chatting(msg: Message, state: FSMContext):
     await stop_chating(msg)
@@ -90,9 +98,9 @@ async def next_chatting(msg: Message, state: FSMContext):
     if check_queue():
         interlocutor = get_interlocutor(msg.from_user.id)
         create_dialogue(msg.from_user.id,interlocutor)
-
-        await msg.answer("собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
-        await bot.send_message(chat_id=interlocutor, text="собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
+        text = "собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой"
+        await msg.answer(text)
+        await bot.send_message(chat_id=interlocutor, text=text)
         await state.set_state(States.chating)
         await dp.fsm.get_context(bot, user_id=interlocutor, chat_id=interlocutor).set_state(States.chating)
 @dp.message(States.chating, F.text == "/link")
@@ -102,11 +110,11 @@ async def link_chating(msg: Message, state: FSMContext):
     await msg.answer("Внимание, cобеседник получил ссылку на ваш профиль!!!")
 
 @dp.message(States.chating, F.text)
-async def chating(msg: Message, state: FSMContext):
+async def chating(msg: Message):
     interlocutor = find_dialogue(msg.from_user.id)
     await bot.send_message(chat_id=interlocutor, text=msg.text)
 @dp.message(States.chating, F.photo)
-async def img_chating(msg: Message, state: FSMContext):
+async def img_chating(msg: Message):
     interlocutor = find_dialogue(msg.from_user.id)
     await bot.send_photo(chat_id=interlocutor, photo=msg.photo[-1].file_id)
 @dp.message(States.chating, F.sticker)
@@ -126,4 +134,4 @@ async def error_chating(msg: Message):
     await msg.answer("❗ВНИМАНИЕ ❗\nНе поддерживаемый тип данных, сообщение не доставлено")
 @dp.message(StateFilter(None))
 async def warning(msg:Message,state:FSMContext):
-    await msg.answer("Чтобы начать напиши /start")
+    await msg.answer("У вас еще нет собеседника. Чтобы начать напиши /start или /search")
