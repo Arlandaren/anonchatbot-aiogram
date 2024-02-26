@@ -5,4 +5,5 @@ class States(StatesGroup):
     setgender = State()
     setage = State()
     chating = State()
+    searching = State()
 # STATES = States()

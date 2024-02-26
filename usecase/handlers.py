@@ -50,20 +50,30 @@ async def setage(msg:Message,state:FSMContext):
 
 @dp.callback_query(F.data == "search_start")
 async def search_start(cb: types.CallbackQuery, state:FSMContext):
-    save_search_state(cb.from_user.id)
+    await state.set_state(States.searching)
+    add_in_queue(cb.from_user.id)
     await cb.message.answer("Идет поиск собеседника", reply_markup=search_menu())
     if check_queue():
         interlocutor = get_interlocutor(cb.from_user.id)
         create_dialogue(cb.from_user.id,interlocutor)
 
         await cb.message.answer("собеседник найден")
-        await bot.send_message(chat_id=interlocutor, text="собеседник найден")
+        await bot.send_message(chat_id=interlocutor, text="собеседник найден\nдля завершения диалога /stop\nдля поиска нового собеседника /next")
         await state.set_state(States.chating)
         await dp.fsm.get_context(bot, user_id=interlocutor, chat_id=interlocutor).set_state(States.chating)
         # await state.storage.set_state(key=StorageKey(cb.message.bot.id, chat_id=interlocutor, user_id=interlocutor), state=States.chating)
-    else:
-        await cb.message.answer("нету")
+@dp.message(F.text == "Остановить поиск",States.searching)
+async def search_stop(msg: Message, state:FSMContext):
+    await msg.answer(text="Поиск остановлен")
+    del_from_queue(msg.from_user.id)
+    await state.clear()
 
+@dp.message(States.chating, lambda m: m.text == "/stop")
+async def stop_chating(msg: Message):
+    interlocutor = find_dialogue(msg.from_user.id)
+    await msg.answer(text="Диалог закончен")
+    await bot.send_message(chat_id=interlocutor, text="Диалог закончен")
+    del_dialogue(msg.from_user.id, interlocutor)
 @dp.message(States.chating)
 async def chating(msg: Message, state: FSMContext):
     interlocutor = find_dialogue(msg.from_user.id)
