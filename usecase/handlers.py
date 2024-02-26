@@ -7,8 +7,10 @@ from models.state import States
 from models.kb import *
 from models.redis import *
 import os
-from aiogram.fsm.storage.base import StorageKey
+
+
 bot = Bot(os.getenv("BOT_TOKEN"))
+
 dp = Dispatcher()
 router = Router()
 
@@ -57,8 +59,8 @@ async def search_start(cb: types.CallbackQuery, state:FSMContext):
         interlocutor = get_interlocutor(cb.from_user.id)
         create_dialogue(cb.from_user.id,interlocutor)
 
-        await cb.message.answer("собеседник найден\nдля завершения диалога /stop\nдля поиска нового собеседника /next")
-        await bot.send_message(chat_id=interlocutor, text="собеседник найден\nдля завершения диалога /stop\nдля поиска нового собеседника /next")
+        await cb.message.answer("собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
+        await bot.send_message(chat_id=interlocutor, text="собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
         await state.set_state(States.chating)
         await dp.fsm.get_context(bot, user_id=interlocutor, chat_id=interlocutor).set_state(States.chating)
         # await state.storage.set_state(key=StorageKey(cb.message.bot.id, chat_id=interlocutor, user_id=interlocutor), state=States.chating)
@@ -89,8 +91,8 @@ async def next_chatting(msg: Message, state: FSMContext):
         interlocutor = get_interlocutor(msg.from_user.id)
         create_dialogue(msg.from_user.id,interlocutor)
 
-        await msg.answer("собеседник найден\nдля завершения диалога /stop\nдля поиска нового собеседника /next")
-        await bot.send_message(chat_id=interlocutor, text="собеседник найден\nдля завершения диалога /stop\nдля поиска нового собеседника /next")
+        await msg.answer("собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
+        await bot.send_message(chat_id=interlocutor, text="собеседник найден\n /stop для завершения диалога\n/next для поиска нового собеседника\n/link чтобы поделиться вашей ссылкой")
         await state.set_state(States.chating)
         await dp.fsm.get_context(bot, user_id=interlocutor, chat_id=interlocutor).set_state(States.chating)
 @dp.message(States.chating, F.text == "/link")
@@ -99,13 +101,29 @@ async def link_chating(msg: Message, state: FSMContext):
     await bot.send_message(chat_id=interlocutor, text=f"Внимание, собеседник отправил вам ссылку на свой профиль!!!\nhttps://t.me/{msg.from_user.username}")
     await msg.answer("Внимание, cобеседник получил ссылку на ваш профиль!!!")
 
-@dp.message(States.chating)
+@dp.message(States.chating, F.text)
 async def chating(msg: Message, state: FSMContext):
     interlocutor = find_dialogue(msg.from_user.id)
-    text = msg.text
-    await bot.send_message(chat_id=interlocutor, text=text)
-
-
+    await bot.send_message(chat_id=interlocutor, text=msg.text)
+@dp.message(States.chating, F.photo)
+async def img_chating(msg: Message, state: FSMContext):
+    interlocutor = find_dialogue(msg.from_user.id)
+    await bot.send_photo(chat_id=interlocutor, photo=msg.photo[-1].file_id)
+@dp.message(States.chating, F.sticker)
+async def sticker_chating(msg:Message):
+    interlocutor = find_dialogue(msg.from_user.id)
+    await bot.send_sticker(chat_id=interlocutor, sticker=msg.sticker.file_id)
+@dp.message(States.chating, F.voice)
+async def voice_chating(msg: Message):
+    interlocutor = find_dialogue(msg.from_user.id)
+    await bot.send_voice(chat_id=interlocutor, voice=msg.voice.file_id)
+@dp.message(States.chating, F.video)
+async def video_chating(msg: Message):
+    interlocutor = find_dialogue(msg.from_user.id)
+    await bot.send_video(chat_id=interlocutor, video=msg.video.file_id)
+@dp.message(States.chating)
+async def error_chating(msg: Message):
+    await msg.answer("❗ВНИМАНИЕ ❗\nНе поддерживаемый тип данных, сообщение не доставлено")
 @dp.message(StateFilter(None))
 async def warning(msg:Message,state:FSMContext):
     await msg.answer("Чтобы начать напиши /start")
